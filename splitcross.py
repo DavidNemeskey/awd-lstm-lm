@@ -129,7 +129,7 @@ class SplitCrossEntropyLoss(nn.Module):
         combo = torch.cat([split_hiddens[i] for i in range(self.nsplits) if len(split_hiddens[i])])
         ###
         all_head_res = torch.nn.functional.linear(combo, head_weight, bias=head_bias)
-        softmaxed_all_head_res = torch.nn.functional.log_softmax(all_head_res)
+        softmaxed_all_head_res = torch.nn.functional.log_softmax(all_head_res, dim=1)
         if self.verbose or verbose:
             self.stats[0].append(combo.size()[0] * head_weight.size()[0])
 

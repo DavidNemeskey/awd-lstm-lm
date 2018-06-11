@@ -74,7 +74,7 @@ def evaluate(data_source, batch_size=10, window=args.window):
         ###
         # Fill pointer history
         start_idx = len(next_word_history) if next_word_history is not None else 0
-        next_word_history = torch.cat([one_hot(t.data[0], ntokens) for t in targets]) if next_word_history is None else torch.cat([next_word_history, torch.cat([one_hot(t.data[0], ntokens) for t in targets])])
+        next_word_history = torch.cat([one_hot(t.data.item(), ntokens) for t in targets]) if next_word_history is None else torch.cat([next_word_history, torch.cat([one_hot(t.data.item(), ntokens) for t in targets])])
         #print(next_word_history)
         pointer_history = Variable(rnn_out.data) if pointer_history is None else torch.cat([pointer_history, Variable(rnn_out.data)], dim=0)
         #print(pointer_history)
@@ -90,7 +90,7 @@ def evaluate(data_source, batch_size=10, window=args.window):
         ###
         # Pointer manual cross entropy
         loss = 0
-        softmax_output_flat = torch.nn.functional.softmax(output_flat)
+        softmax_output_flat = torch.nn.functional.softmax(output_flat, dim=1)
         for idx, vocab_loss in enumerate(softmax_output_flat):
             p = vocab_loss
             if start_idx + idx > window:
@@ -98,13 +98,13 @@ def evaluate(data_source, batch_size=10, window=args.window):
                 valid_pointer_history = pointer_history[start_idx + idx - window:start_idx + idx]
                 logits = torch.mv(valid_pointer_history, rnn_out[idx])
                 theta = args.theta
-                ptr_attn = torch.nn.functional.softmax(theta * logits).view(-1, 1)
+                ptr_attn = torch.nn.functional.softmax(theta * logits, dim=0).view(-1, 1)
                 ptr_dist = (ptr_attn.expand_as(valid_next_word) * valid_next_word).sum(0).squeeze()
                 lambdah = args.lambdasm
                 p = lambdah * ptr_dist + (1 - lambdah) * vocab_loss
             ###
             target_loss = p[targets[idx].data]
-            loss += (-torch.log(target_loss)).data[0]
+            loss += (-torch.log(target_loss)).data.item()
         total_loss += loss / batch_size
         ###
         hidden = repackage_hidden(hidden)

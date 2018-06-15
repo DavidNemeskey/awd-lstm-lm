@@ -12,9 +12,6 @@ class RNNModel(nn.Module):
     def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, dropout=0.5, dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0, tie_weights=False):
         super(RNNModel, self).__init__()
         self.lockdrop = LockedDropout()
-        self.idrop = nn.Dropout(dropouti)
-        self.hdrop = nn.Dropout(dropouth)
-        self.drop = nn.Dropout(dropout)
         self.encoder = nn.Embedding(ntoken, ninp)
         assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
@@ -30,7 +27,6 @@ class RNNModel(nn.Module):
             self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
             for rnn in self.rnns:
                 rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
-        print(self.rnns)
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.decoder = nn.Linear(nhid, ntoken)
 
@@ -68,22 +64,18 @@ class RNNModel(nn.Module):
 
     def forward(self, input, hidden, return_h=False):
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
-        #emb = self.idrop(emb)
 
         emb = self.lockdrop(emb, self.dropouti)
 
         raw_output = emb
         new_hidden = []
-        #raw_output, hidden = self.rnn(emb, hidden)
         raw_outputs = []
         outputs = []
         for l, rnn in enumerate(self.rnns):
-            current_input = raw_output
             raw_output, new_h = rnn(raw_output, hidden[l])
             new_hidden.append(new_h)
             raw_outputs.append(raw_output)
             if l != self.nlayers - 1:
-                #self.hdrop(raw_output)
                 raw_output = self.lockdrop(raw_output, self.dropouth)
                 outputs.append(raw_output)
         hidden = new_hidden

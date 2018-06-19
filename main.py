@@ -216,7 +216,7 @@ def train():
             print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:05.5f} | ms/batch {:5.2f} | '
                     'loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}'.format(
                 epoch, batch, len(train_data) // args.bptt, optimizer.param_groups[0]['lr'],
-                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss), cur_loss / math.log(2)))
+                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss), cur_loss / math.log(2)), flush=True)
             total_loss = 0
             start_time = time.time()
         ###
@@ -250,11 +250,11 @@ try:
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                 'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
               epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
-            print('-' * 89)
+            print('-' * 89, flush=True)
 
             if val_loss2 < stored_loss:
                 model_save(args.save)
-                print('Saving Averaged!')
+                print('Saving Averaged!', flush=True)
                 stored_loss = val_loss2
 
             for prm in model.parameters():
@@ -266,28 +266,28 @@ try:
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                 'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
               epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
-            print('-' * 89)
+            print('-' * 89, flush=True)
 
             if val_loss < stored_loss:
                 model_save(args.save)
-                print('Saving model (new best validation)')
+                print('Saving model (new best validation)', flush=True)
                 stored_loss = val_loss
 
             if args.optimizer == 'sgd' and 't0' not in optimizer.param_groups[0] and (len(best_val_loss)>args.nonmono and val_loss > min(best_val_loss[:-args.nonmono])):
-                print('Switching to ASGD')
+                print('Switching to ASGD', flush=True)
                 optimizer = torch.optim.ASGD(model.parameters(), lr=args.lr, t0=0, lambd=0., weight_decay=args.wdecay)
 
             if epoch in args.when:
                 print('Saving model before learning rate decreased')
                 model_save('{}.e{}'.format(args.save, epoch))
-                print('Dividing learning rate by 10')
+                print('Dividing learning rate by 10', flush=True)
                 optimizer.param_groups[0]['lr'] /= 10.
 
             best_val_loss.append(val_loss)
 
 except KeyboardInterrupt:
     print('-' * 89)
-    print('Exiting from training early')
+    print('Exiting from training early', flush=True)
 
 # Load the best saved model.
 model_load(args.save)
@@ -297,4 +297,4 @@ test_loss = evaluate(test_data, test_batch_size)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
     test_loss, math.exp(test_loss), test_loss / math.log(2)))
-print('=' * 89)
+print('=' * 89, flush=True)

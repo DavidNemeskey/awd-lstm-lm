@@ -105,12 +105,5 @@ class RNNModel(nn.Module):
     def loss_regularizer(self):
         return self.loss_reg
 
-    def init_hidden(self, bsz):
-        weight = next(self.parameters()).data
-        if self.rnn_type == 'LSTM':
-            return [(Variable(weight.new(1, bsz, self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid)).zero_()),
-                    Variable(weight.new(1, bsz, self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid)).zero_()))
-                    for l in range(self.nlayers)]
-        elif self.rnn_type == 'QRNN' or self.rnn_type == 'GRU':
-            return [Variable(weight.new(1, bsz, self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid)).zero_())
-                    for l in range(self.nlayers)]
+    def init_hidden(self, batch_size):
+        return [rnn.init_hidden(batch_size) for rnn in self.rnns]

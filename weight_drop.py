@@ -46,6 +46,16 @@ class WeightDrop(torch.nn.Module):
         self._setweights()
         return self.module.forward(*args)
 
+    def __getattr__(self, name):
+        """
+        Refers attributes not found in :class:`WeightDrop` /
+        :class:`nn.Module` to the wrapped ``module`` instance.
+        """
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
+
 if __name__ == '__main__':
     import torch
     from weight_drop import WeightDrop

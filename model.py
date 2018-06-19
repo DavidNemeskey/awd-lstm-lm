@@ -12,7 +12,7 @@ class RNNModel(nn.Module):
 
     def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, dropout=0.5,
                  dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0,
-                 tie_weights=False):
+                 tie_weights=False, alpha=0, beta=0):
         super(RNNModel, self).__init__()
         self.lockdrop = LockedDropout()
         self.encoder = nn.Embedding(ntoken, ninp)
@@ -51,6 +51,10 @@ class RNNModel(nn.Module):
         self.dropoute = dropoute
         self.tie_weights = tie_weights
 
+        self.alpha = alpha
+        self.beta = beta
+        self.loss_reg = 0
+
     def reset(self):
         if self.rnn_type == 'QRNN': [r.reset() for r in self.rnns]
 
@@ -60,7 +64,7 @@ class RNNModel(nn.Module):
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, input, hidden, return_h=False):
+    def forward(self, input, hidden):
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
 
         emb = self.lockdrop(emb, self.dropouti)
@@ -84,9 +88,22 @@ class RNNModel(nn.Module):
         result = output.view(output.size(0)*output.size(1), output.size(2))
         # Not needed for ASM
         result = self.decoder(result)
-        if return_h:
-            return result, hidden, raw_outputs, outputs
+
+        self.loss_reg = 0
+        raw_output = raw_outputs[-1]
+
+        alpha_stuff = beta_stuff = 0
+        if self.beta:
+            beta_stuff = self.beta * (
+                raw_output[1:] - raw_output[:-1]).pow(2).mean()
+        if self.alpha:
+            alpha_stuff = self.alpha * output.pow(2).mean()
+        self.loss_reg += alpha_stuff + beta_stuff
+
         return result, hidden
+
+    def loss_regularizer(self):
+        return self.loss_reg
 
     def init_hidden(self, bsz):
         weight = next(self.parameters()).data

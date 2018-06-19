@@ -117,7 +117,8 @@ criterion = None
 ntokens = len(corpus.dictionary)
 model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid,
                        args.nlayers, args.dropout, args.dropouth, args.dropouti,
-                       args.dropoute, args.wdrop, args.tied)
+                       args.dropoute, args.wdrop, args.tied,
+                       args.alpha, args.beta)
 ###
 if args.resume:
     print('Resuming model ...')
@@ -198,15 +199,16 @@ def train():
         hidden = repackage_hidden(hidden)
         optimizer.zero_grad()
 
-        output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden, return_h=True)
+        # output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden)
+        output, hidden = model(data, hidden)
         raw_loss = criterion(output, targets)
         # ASM raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
 
-        loss = raw_loss
+        loss = raw_loss + model.loss_regularizer()
         # Activiation Regularization
-        if args.alpha: loss = loss + sum(args.alpha * dropped_rnn_h.pow(2).mean() for dropped_rnn_h in dropped_rnn_hs[-1:])
+        # if args.alpha: loss = loss + sum(args.alpha * dropped_rnn_h.pow(2).mean() for dropped_rnn_h in dropped_rnn_hs[-1:])
         # Temporal Activation Regularization (slowness)
-        if args.beta: loss = loss + sum(args.beta * (rnn_h[1:] - rnn_h[:-1]).pow(2).mean() for rnn_h in rnn_hs[-1:])
+        # if args.beta: loss = loss + sum(args.beta * (rnn_h[1:] - rnn_h[:-1]).pow(2).mean() for rnn_h in rnn_hs[-1:])
         loss.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.

@@ -3,10 +3,9 @@ import torch.nn as nn
 from torch.autograd import Variable
 
 from embed_regularize import embedded_dropout
-from locked_dropout import LockedDropout
 from weight_drop import WeightDrop
-from pytorch_lm.rnn.lstm import PytorchLstmLayer
 from pytorch_lm.utils.config import create_object
+from pytorch_lm.dropout import create_dropout
 
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
@@ -15,14 +14,17 @@ class RNNModel(nn.Module):
                  dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0,
                  tie_weights=False, alpha=0, beta=0):
         super(RNNModel, self).__init__()
-        self.lockdrop = LockedDropout()
+        self.in_do = create_dropout('{}s'.format(dropouti))
+        self.lay_do = nn.ModuleList(
+            [create_dropout('{}s'.format(dropouth)) for _ in range(nlayers - 1)])
+        self.out_do = create_dropout('{}s'.format(dropout))
 
         self.encoder = nn.Embedding(ntoken, ninp)
         rnn = {'class': 'PytorchLstmLayer'}
         self.rnns = nn.ModuleList()
         for l in range(nlayers):
             in_size = ninp if not l else nhid
-            out_size = nhid if l + 1 != nlayers else ninp
+            out_size = nhid if l + 1 != nlayers or not tie_weights else ninp
             self.rnns.append(
                 create_object(rnn, base_module='pytorch_lm.rnn',
                               args=[in_size, out_size])
@@ -77,8 +79,7 @@ class RNNModel(nn.Module):
 
     def forward(self, input, hidden):
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
-
-        emb = self.lockdrop(emb, self.dropouti)
+        emb = self.in_do(emb)
 
         raw_output = emb
         new_hidden = []
@@ -89,11 +90,11 @@ class RNNModel(nn.Module):
             new_hidden.append(new_h)
             raw_outputs.append(raw_output)
             if l != self.nlayers - 1:
-                raw_output = self.lockdrop(raw_output, self.dropouth)
+                raw_output = self.lay_do[l](raw_output)
                 outputs.append(raw_output)
         hidden = new_hidden
 
-        output = self.lockdrop(raw_output, self.dropout)
+        output = self.out_do(raw_output)
         outputs.append(output)
 
         result = output.view(output.size(0)*output.size(1), output.size(2))

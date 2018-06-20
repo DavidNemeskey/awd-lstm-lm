@@ -6,6 +6,7 @@ from embed_regularize import embedded_dropout
 from locked_dropout import LockedDropout
 from weight_drop import WeightDrop
 from pytorch_lm.rnn.lstm import PytorchLstmLayer
+from pytorch_lm.utils.config import create_object
 
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
@@ -15,18 +16,28 @@ class RNNModel(nn.Module):
                  tie_weights=False, alpha=0, beta=0):
         super(RNNModel, self).__init__()
         self.lockdrop = LockedDropout()
+
         self.encoder = nn.Embedding(ntoken, ninp)
-        # assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
-        # if rnn_type == 'LSTM':
-        self.rnns = [PytorchLstmLayer(
-            ninp if l == 0 else nhid,
-            nhid if l != nlayers - 1 else (ninp if tie_weights else nhid),
-            1, dropout=0
-        ) for l in range(nlayers)]
-        if wdrop:
-            self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
-        self.rnns = torch.nn.ModuleList(self.rnns)
+        rnn = {'class': 'PytorchLstmLayer'}
+        self.rnns = nn.ModuleList()
+        for l in range(nlayers):
+            in_size = ninp if not l else nhid
+            out_size = nhid if l + 1 != nlayers else ninp
+            self.rnns.append(
+                create_object(rnn, base_module='pytorch_lm.rnn',
+                              args=[in_size, out_size])
+            )
+        # Should be this instead, but it fucks up the sequence of the random
+        # number generator, so we wouldn't get the same numbers... -- but maybe
+        # better? TODO
+        # self.decoder = nn.Linear(ninp if tie_weights else nhid, ntoken)
         self.decoder = nn.Linear(nhid, ntoken)
+
+        if wdrop:
+            self.rnns = nn.ModuleList(
+                [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop)
+                 for rnn in self.rnns]
+            )
 
         # Optionally tie weights as in:
         # "Using the Output Embedding to Improve Language Models" (Press & Wolf 2016)

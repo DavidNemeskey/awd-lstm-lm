@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from embed_regularize import embedded_dropout
 from weight_drop import WeightDrop
 from pytorch_lm.utils.config import create_object
 from pytorch_lm.dropout import create_dropout
@@ -77,8 +76,24 @@ class RNNModel(nn.Module):
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
+    def embedded_dropout(self, words):
+        """
+        Another (less memory-consuming) way to compute embedding dropout.
+        Note that just like the original AWD-LSTM (Merity et al., 2018), but as
+        opposed to the RHN implementation in Zilly et al. (2017), the same
+        words are masked in all sequences of the batch.
+        """
+        emb = self.encoder(words)
+        if self.training and self.dropoute:
+            weight = self.encoder.weight
+            dropout = self.dropoute
+            mask = weight.data.new_empty((weight.size(0), 1)).bernoulli_(1 - dropout) / (1 - dropout)
+            m = torch.gather(mask.expand(weight.size(0), words.size(1)), 0, words)
+            emb = (emb * m.unsqueeze(2).expand_as(emb)).squeeze()
+        return emb
+
     def forward(self, input, hidden):
-        emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
+        emb = self.embedded_dropout(input)
         emb = self.in_do(emb)
 
         raw_output = emb

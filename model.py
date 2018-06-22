@@ -87,7 +87,8 @@ class RNNModel(nn.Module):
         if self.training and self.dropoute:
             weight = self.encoder.weight
             dropout = self.dropoute
-            mask = weight.data.new_empty((weight.size(0), 1)).bernoulli_(1 - dropout) / (1 - dropout)
+            mask_ = weight.data.new_ones((weight.size(0), 1))
+            mask = nn.functional.dropout(mask_, dropout, self.training)
             m = torch.gather(mask.expand(weight.size(0), words.size(1)), 0, words)
             emb = (emb * m.unsqueeze(2).expand_as(emb)).squeeze()
         return emb

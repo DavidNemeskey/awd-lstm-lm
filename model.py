@@ -113,7 +113,7 @@ class RNNModel(nn.Module):
         output = self.out_do(raw_output)
         outputs.append(output)
 
-        result = output.view(output.size(0)*output.size(1), output.size(2))
+        result = output.contiguous().view(output.size(0)*output.size(1), output.size(2))
         # Not needed for ASM
         result = self.decoder(result)
 
@@ -123,7 +123,7 @@ class RNNModel(nn.Module):
         alpha_stuff = beta_stuff = 0
         if self.beta:
             beta_stuff = self.beta * (
-                raw_output[1:] - raw_output[:-1]).pow(2).mean()
+                raw_output[:, 1:] - raw_output[:, :-1]).pow(2).mean()
         if self.alpha:
             alpha_stuff = self.alpha * output.pow(2).mean()
         self.loss_reg += alpha_stuff + beta_stuff

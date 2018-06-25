@@ -26,5 +26,5 @@ def get_batch(source, i, args, seq_len=None, evaluation=False):
             data = Variable(source[i:i+seq_len])
     else:
         data = Variable(source[i:i+seq_len])
-    target = Variable(source[i+1:i+1+seq_len].view(-1))
-    return data, target
+    target = Variable(torch.t(source[i+1:i+1+seq_len]).contiguous().view(-1))
+    return torch.t(data), target

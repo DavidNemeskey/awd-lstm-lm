@@ -1,10 +1,12 @@
 import argparse
-import time
+import hashlib
 import math
+import os
+import time
+
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 
 import data
 import model
@@ -90,8 +92,7 @@ def model_load(fn):
     with open(fn, 'rb') as f:
         model, criterion, optimizer = torch.load(f)
 
-import os
-import hashlib
+
 fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
 if os.path.exists(fn):
     print('Loading cached dataset...')
@@ -163,7 +164,6 @@ def evaluate(data_source, batch_size=10):
     model.eval()
     if args.model == 'QRNN': model.reset()
     total_loss = 0
-    ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
@@ -179,7 +179,6 @@ def train():
     if args.model == 'QRNN': model.reset()
     total_loss = 0
     start_time = time.time()
-    ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(args.batch_size)
     batch, i = 0, 0
     while i < train_data.size(0) - 1 - 1:
@@ -221,14 +220,17 @@ def train():
             cur_loss = total_loss.item() / args.log_interval
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:05.5f} | ms/batch {:5.2f} | '
-                    'loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}'.format(
-                epoch, batch, len(train_data) // args.bptt, optimizer.param_groups[0]['lr'],
-                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss), cur_loss / math.log(2)), flush=True)
+                  'loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}'.format(
+                      epoch, batch, len(train_data) // args.bptt,
+                      optimizer.param_groups[0]['lr'],
+                      elapsed * 1000 / args.log_interval, cur_loss,
+                      math.exp(cur_loss), cur_loss / math.log(2)), flush=True)
             total_loss = 0
             start_time = time.time()
         ###
         batch += 1
         i += seq_len
+
 
 # Loop over epochs.
 lr = args.lr
@@ -255,8 +257,9 @@ try:
             val_loss2 = evaluate(val_data)
             print('-' * 89)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
-              epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
+                  'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
+                      epoch, (time.time() - epoch_start_time), val_loss2,
+                      math.exp(val_loss2), val_loss2 / math.log(2)))
             print('-' * 89, flush=True)
 
             if val_loss2 < stored_loss:
@@ -271,8 +274,9 @@ try:
             val_loss = evaluate(val_data, eval_batch_size)
             print('-' * 89)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
-              epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
+                  'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
+                      epoch, (time.time() - epoch_start_time), val_loss,
+                      math.exp(val_loss), val_loss / math.log(2)))
             print('-' * 89, flush=True)
 
             if val_loss < stored_loss:
@@ -280,7 +284,7 @@ try:
                 print('Saving model (new best validation)', flush=True)
                 stored_loss = val_loss
 
-            if args.optimizer == 'sgd' and 't0' not in optimizer.param_groups[0] and (len(best_val_loss)>args.nonmono and val_loss > min(best_val_loss[:-args.nonmono])):
+            if args.optimizer == 'sgd' and 't0' not in optimizer.param_groups[0] and (len(best_val_loss) > args.nonmono and val_loss > min(best_val_loss[:-args.nonmono])):
                 print('Switching to ASGD', flush=True)
                 optimizer = torch.optim.ASGD(model.parameters(), lr=args.lr, t0=0, lambd=0., weight_decay=args.wdecay)
 

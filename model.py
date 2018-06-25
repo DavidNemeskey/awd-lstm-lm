@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 
 from weight_drop import WeightDrop
 from pytorch_lm.utils.config import create_object
 from pytorch_lm.dropout import create_dropout
+
 
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
@@ -47,8 +47,8 @@ class RNNModel(nn.Module):
         # "Tying Word Vectors and Word Classifiers: A Loss Framework for Language Modeling" (Inan et al. 2016)
         # https://arxiv.org/abs/1611.01462
         if tie_weights:
-            #if nhid != ninp:
-            #    raise ValueError('When using the tied flag, nhid must be equal to emsize')
+            # if nhid != ninp:
+            #     raise ValueError('When using the tied flag, nhid must be equal to emsize')
             self.decoder.weight = self.encoder.weight
 
         self.init_weights()
@@ -68,7 +68,8 @@ class RNNModel(nn.Module):
         self.loss_reg = 0
 
     def reset(self):
-        if self.rnn_type == 'QRNN': [r.reset() for r in self.rnns]
+        if self.rnn_type == 'QRNN':
+            [r.reset() for r in self.rnns]
 
     def init_weights(self):
         initrange = 0.1

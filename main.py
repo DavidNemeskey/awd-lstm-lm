@@ -8,7 +8,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import data
+from pytorch_lm.data import Corpus, LMData
+from pytorch_lm.bptt import FixNumSteps, RandomNumSteps
 import model
 
 from utils import batchify, get_batch, repackage_hidden
@@ -99,14 +100,17 @@ if os.path.exists(fn):
     corpus = torch.load(fn)
 else:
     print('Producing dataset...')
-    corpus = data.Corpus(args.data)
+    corpus = Corpus(args.data)
     torch.save(corpus, fn)
 
 eval_batch_size = 10
 test_batch_size = 1
-train_data = batchify(corpus.train, args.batch_size, args)
-val_data = batchify(corpus.valid, eval_batch_size, args)
-test_data = batchify(corpus.test, test_batch_size, args)
+train_data = LMData(corpus.train, args.batch_size, args.cuda)
+val_data = LMData(corpus.valid, eval_batch_size, args.cuda)
+test_data = LMData(corpus.test, test_batch_size, args.cuda)
+# train_data = batchify(corpus.train, args.batch_size, args)
+# val_data = batchify(corpus.valid, eval_batch_size, args)
+# test_data = batchify(corpus.test, test_batch_size, args)
 
 ###############################################################################
 # Build the model
@@ -163,15 +167,18 @@ def evaluate(data_source, batch_size=10):
     # Turn on evaluation mode which disables dropout.
     model.eval()
     if args.model == 'QRNN': model.reset()
+    data_len = data_source.data.size(1)
     total_loss = 0
     hidden = model.init_hidden(batch_size)
-    for i in range(0, data_source.size(0) - 1, args.bptt):
-        data, targets = get_batch(data_source, i, args, evaluation=True)
+    # for i in range(0, data_source.size(0) - 1, args.bptt):
+    #     data, targets = get_batch(data_source, i, args, evaluation=True)
+    num_steps = FixNumSteps(args.bptt)
+    for data, targets in data_source.get_batches(num_steps, evaluation=True):
         output, hidden = model(data, hidden)
-        total_loss += data.size(1) * criterion(output, targets).data
+        total_loss += data.size(1) * criterion(output, targets.view(-1)).data
         # ASM total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
-    return total_loss.item() / len(data_source)
+    return total_loss.item() / data_len
 
 
 def train():
@@ -179,19 +186,24 @@ def train():
     if args.model == 'QRNN': model.reset()
     total_loss = 0
     start_time = time.time()
+    data_len = train_data.data.size(1)
     hidden = model.init_hidden(args.batch_size)
     batch, i = 0, 0
-    while i < train_data.size(0) - 1 - 1:
-        bptt = args.bptt if np.random.random() < 0.95 else args.bptt / 2.
-        # Prevent excessively small or negative sequence lengths
-        seq_len = max(5, int(np.random.normal(bptt, 5)))
-        # There's a very small chance that it could select a very long sequence length resulting in OOM
-        # seq_len = min(seq_len, args.bptt + 10)
+    # while i < train_data.size(0) - 1 - 1:
+    num_steps = RandomNumSteps(args.bptt, 0.95, 5)
+    for batch, (data, targets, lr_ratio) in enumerate(train_data.get_batches(num_steps)):
+        # bptt = args.bptt if np.random.random() < 0.95 else args.bptt / 2.
+        # # Prevent excessively small or negative sequence lengths
+        # seq_len = max(5, int(np.random.normal(bptt, 5)))
+        # # There's a very small chance that it could select a very long sequence length resulting in OOM
+        # # seq_len = min(seq_len, args.bptt + 10)
+        seq_len = targets.size(1)
 
         lr2 = optimizer.param_groups[0]['lr']
-        optimizer.param_groups[0]['lr'] = lr2 * seq_len / args.bptt
+        # optimizer.param_groups[0]['lr'] = lr2 * seq_len / args.bptt
+        optimizer.param_groups[0]['lr'] = lr2 * lr_ratio
         model.train()
-        data, targets = get_batch(train_data, i, args, seq_len=seq_len)
+        # data, targets = get_batch(train_data, i, args, seq_len=seq_len)
 
         # Starting each batch, we detach the hidden state from how it was previously produced.
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
@@ -200,7 +212,7 @@ def train():
 
         # output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden)
         output, hidden = model(data, hidden)
-        raw_loss = criterion(output, targets)
+        raw_loss = criterion(output, targets.view(-1))
         # ASM raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
 
         loss = raw_loss + model.loss_regularizer()
@@ -221,7 +233,7 @@ def train():
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:05.5f} | ms/batch {:5.2f} | '
                   'loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}'.format(
-                      epoch, batch, len(train_data) // args.bptt,
+                      epoch, batch, data_len // args.bptt,
                       optimizer.param_groups[0]['lr'],
                       elapsed * 1000 / args.log_interval, cur_loss,
                       math.exp(cur_loss), cur_loss / math.log(2)), flush=True)

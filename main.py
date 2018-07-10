@@ -10,7 +10,8 @@ import torch.nn as nn
 
 from pytorch_lm.data import Corpus, LMData
 from pytorch_lm.bptt import FixNumSteps, RandomNumSteps
-import model
+# import model
+import pytorch_lm.model as model
 
 from utils import batchify, get_batch, repackage_hidden
 
@@ -120,10 +121,16 @@ test_data = LMData(corpus.test, test_batch_size, args.cuda)
 criterion = None
 
 ntokens = len(corpus.dictionary)
-model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid,
-                       args.nlayers, args.dropout, args.dropouth, args.dropouti,
-                       args.dropoute, args.wdrop, args.tied,
-                       args.alpha, args.beta)
+# model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid,
+#                        args.nlayers, args.dropout, args.dropouth, args.dropouti,
+#                        args.dropoute, args.wdrop, args.tied,
+#                        args.alpha, args.beta)
+model = model.RealMerityModel(
+    ntokens, args.nlayers, None, args.emsize,
+    args.nhid, args.dropoute, '{}s'.format(args.dropouti),
+    '{}s'.format(args.dropouth), '{}s'.format(args.dropout), None,
+    args.tied, args.wdrop, args.alpha, args.beta
+)
 ###
 if args.resume:
     print('Resuming model ...')
@@ -175,7 +182,7 @@ def evaluate(data_source, batch_size=10):
     num_steps = FixNumSteps(args.bptt)
     for data, targets in data_source.get_batches(num_steps, evaluation=True):
         output, hidden = model(data, hidden)
-        total_loss += data.size(1) * criterion(output, targets.view(-1)).data
+        total_loss += data.size(1) * criterion(output.view(-1, ntokens), targets.view(-1)).data
         # ASM total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
     return total_loss.item() / data_len
@@ -212,7 +219,7 @@ def train():
 
         # output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden)
         output, hidden = model(data, hidden)
-        raw_loss = criterion(output, targets.view(-1))
+        raw_loss = criterion(output.view(-1, ntokens), targets.view(-1))
         # ASM raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
 
         loss = raw_loss + model.loss_regularizer()

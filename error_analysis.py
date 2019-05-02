@@ -42,16 +42,15 @@ def parse_arguments():
 def model_load(fn):
     with open(fn, 'rb') as f:
         model, criterion, optimizer = torch.load(f)
-    return model
+    return model, criterion
 
 
-def evaluate(data_source, batch_size=10):
+def evaluate(model, data_source, criterion, batch_size=10):
     """Runs the evaluation and collects the statistics."""
     # Turn on evaluation mode which disables dropout.
     model.eval()
-    if args.model == 'QRNN': model.reset()
+    if hasattr(model, 'reset'): model.reset()  # QRNN
     total_loss = 0
-    ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
@@ -69,7 +68,8 @@ def main():
         format='%(asctime)s - %(process)s - %(levelname)s - %(message)s'
     )
 
-    model = model_load(args.model)
+    model, criterion = model_load(args.model)
+    evaluate(model, val_data, criterion, eval_batch_size)
 
 
 if __name__ == '__main__':

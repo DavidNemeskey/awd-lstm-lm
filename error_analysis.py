@@ -7,7 +7,9 @@ as well as the top N candidates, the rank of the real word, etc.
 """
 
 import argparse
+import hashlib
 import logging
+import os
 
 import torch
 import torch.nn as nn
@@ -45,16 +47,20 @@ def model_load(fn):
     return model, criterion
 
 
-def evaluate(model, data_source, criterion, batch_size=10):
+def evaluate(model, data_source, criterion, args, batch_size=10):
     """Runs the evaluation and collects the statistics."""
     # Turn on evaluation mode which disables dropout.
     model.eval()
     if hasattr(model, 'reset'): model.reset()  # QRNN
     total_loss = 0
     hidden = model.init_hidden(batch_size)
+    context = [[] for _ in range(batch_size)]
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
+        print(data.size(), targets.size())
         output, hidden = model(data, hidden)
+        print(output.size(), hidden.size())
+        break
         total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
     return total_loss.item() / len(data_source)
@@ -68,6 +74,16 @@ def main():
         format='%(asctime)s - %(process)s - %(levelname)s - %(message)s'
     )
 
+    fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
+    if os.path.exists(fn):
+        logging.info('Loading cached dataset...')
+        corpus = torch.load(fn)
+    else:
+        logging.info('Caching dataset...')
+        corpus = data.Corpus(args.data)
+        torch.save(corpus, fn)
+
+    test_data = batchify(corpus.test, eval_batch_size, args)
     model, criterion = model_load(args.model)
     evaluate(model, val_data, criterion, eval_batch_size)
 

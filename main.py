@@ -2,6 +2,7 @@ import argparse
 import time
 import math
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 
@@ -64,15 +65,18 @@ parser.add_argument('--optimizer', type=str,  default='sgd',
                     help='optimizer to use (sgd, adam)')
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
+parser.add_argument('--from-embedding',
+                    help='initialize the embedding (and softmax) weights from those of an already existing model')
 args = parser.parse_args()
 args.tied = True
 
 # Set the random seed manually for reproducibility.
+random.seed(args.seed)
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
     if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        print("WARNING: You have a CUDA device, so you should probably run with --cuda", flush=True)
     else:
         torch.cuda.manual_seed(args.seed)
 
@@ -89,14 +93,23 @@ def model_load(fn):
     with open(fn, 'rb') as f:
         model, criterion, optimizer = torch.load(f)
 
+def load_embedding(fn):
+    global model
+    with open(fn, 'rb') as f:
+        embedding_model, _, _ = torch.load(f)
+        model.encoder.weight = embedding_model.encoder.weight
+        model.decoder.weight = embedding_model.decoder.weight
+        model.encoder.weight.requires_grad = False
+        model.decoder.weight.requires_grad = False
+
 import os
 import hashlib
 fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
 if os.path.exists(fn):
-    print('Loading cached dataset...')
+    print('Loading cached dataset...', flush=True)
     corpus = torch.load(fn)
 else:
-    print('Producing dataset...')
+    print('Producing dataset...', flush=True)
     corpus = data.Corpus(args.data)
     torch.save(corpus, fn)
 
@@ -117,7 +130,7 @@ ntokens = len(corpus.dictionary)
 model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
 ###
 if args.resume:
-    print('Resuming model ...')
+    print('Resuming model ...', flush=True)
     model_load(args.resume)
     optimizer.param_groups[0]['lr'] = args.lr
     model.dropouti, model.dropouth, model.dropout, args.dropoute = args.dropouti, args.dropouth, args.dropout, args.dropoute
@@ -137,8 +150,17 @@ if not criterion:
     elif ntokens > 75000:
         # WikiText-103
         splits = [2800, 20000, 76000]
-    print('Using', splits)
+    print('Using', splits, flush=True)
     criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
+
+### Load the embedding, if required
+if args.from_embedding:
+    print('Loading embedding from {}'.format(args.from_embedding))
+    load_embedding(args.from_embedding)
+
+orig_emb = model.encoder.weight.detach()
+assert (orig_emb - model.encoder.weight).norm(2) == 0
+
 ###
 if args.cuda:
     model = model.cuda()
@@ -146,8 +168,8 @@ if args.cuda:
 ###
 params = list(model.parameters()) + list(criterion.parameters())
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in params if x.size())
-print('Args:', args)
-print('Model total parameters:', total_params)
+print('Args:', args, flush=True)
+print('Model total parameters:', total_params, flush=True)
 
 ###############################################################################
 # Training code
@@ -215,7 +237,7 @@ def train():
             print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:05.5f} | ms/batch {:5.2f} | '
                     'loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}'.format(
                 epoch, batch, len(train_data) // args.bptt, optimizer.param_groups[0]['lr'],
-                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss), cur_loss / math.log(2)))
+                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss), cur_loss / math.log(2)), flush=True)
             total_loss = 0
             start_time = time.time()
         ###
@@ -238,62 +260,84 @@ try:
     for epoch in range(1, args.epochs+1):
         epoch_start_time = time.time()
         train()
+        if args.from_embedding:
+            print('asserting...')
+            assert (orig_emb.cpu() - model.encoder.weight.cpu()).norm(2) == 0
+            assert (orig_emb.cpu() - model.decoder.weight.cpu()).norm(2) == 0
         if 't0' in optimizer.param_groups[0]:
+            # MY DEBUG
+            import os
+            if not os.path.isfile('ASGD_' + args.save):
+                model_save('ASGD_' + args.save)
             tmp = {}
-            for prm in model.parameters():
-                tmp[prm] = prm.data.clone()
-                prm.data = optimizer.state[prm]['ax'].clone()
+            for name, prm in model.named_parameters():
+                if prm.requires_grad:
+                    # MY "SOLUTION" TEST
+                    try:
+                        if '_raw' not in name:
+                            tmp[prm] = prm.data.clone()
+                            prm.data = optimizer.state[prm]['ax'].clone()
+                    except:
+                        print('ax problem with parameter {}'.format(name), flush=True)
+                        raise
+                else:
+                    print('Parameter {} does not require grad.'.format(name))
 
             val_loss2 = evaluate(val_data)
-            print('-' * 89)
+            print('-' * 89, flush=True)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                 'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
-                    epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2)))
-            print('-' * 89)
+                    epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2)), flush=True)
+            print('-' * 89, flush=True)
 
             if val_loss2 < stored_loss:
                 model_save(args.save)
-                print('Saving Averaged!')
+                print('Saving Averaged!', flush=True)
                 stored_loss = val_loss2
 
-            for prm in model.parameters():
-                prm.data = tmp[prm].clone()
+            for name, prm in model.named_parameters():
+                if prm.requires_grad:
+                    # MY "SOLUTION" TEST
+                    if '_raw' not in name:
+                        prm.data = tmp[prm].clone()
+                else:
+                    print('Again, parameter {} does not require grad.'.format(name))
 
         else:
             val_loss = evaluate(val_data, eval_batch_size)
-            print('-' * 89)
+            print('-' * 89, flush=True)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                 'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
-              epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
-            print('-' * 89)
+              epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)), flush=True)
+            print('-' * 89, flush=True)
 
             if val_loss < stored_loss:
                 model_save(args.save)
-                print('Saving model (new best validation)')
+                print('Saving model (new best validation)', flush=True)
                 stored_loss = val_loss
 
             if args.optimizer == 'sgd' and 't0' not in optimizer.param_groups[0] and (len(best_val_loss)>args.nonmono and val_loss > min(best_val_loss[:-args.nonmono])):
-                print('Switching to ASGD')
+                print('Switching to ASGD', flush=True)
                 optimizer = torch.optim.ASGD(model.parameters(), lr=args.lr, t0=0, lambd=0., weight_decay=args.wdecay)
 
             if epoch in args.when:
-                print('Saving model before learning rate decreased')
+                print('Saving model before learning rate decreased', flush=True)
                 model_save('{}.e{}'.format(args.save, epoch))
-                print('Dividing learning rate by 10')
+                print('Dividing learning rate by 10', flush=True)
                 optimizer.param_groups[0]['lr'] /= 10.
 
             best_val_loss.append(val_loss)
 
 except KeyboardInterrupt:
-    print('-' * 89)
-    print('Exiting from training early')
+    print('-' * 89, flush=True)
+    print('Exiting from training early', flush=True)
 
 # Load the best saved model.
 model_load(args.save)
 
 # Run on test data.
 test_loss = evaluate(test_data, test_batch_size)
-print('=' * 89)
+print('=' * 89, flush=True)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
-    test_loss, math.exp(test_loss), test_loss / math.log(2)))
-print('=' * 89)
+    test_loss, math.exp(test_loss), test_loss / math.log(2)), flush=True)
+print('=' * 89, flush=True)

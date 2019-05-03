@@ -29,11 +29,11 @@ def parse_arguments():
                         help='which file to load. Default: test.')
     parser.add_argument('--model', '-m', type=str, required=True,
                         help='the model file (--save in main.py).')
-    parser.add_argument('--no-cuda', '-c', action='store_false',
+    parser.add_argument('--no-cuda', '-c', dest='cuda', action='store_false',
                         help='do not use CUDA')
-    parser.add_argument('--batch', '-b', type=int, dest='batch_size', default=80,
-                        help='the batch size. Default is 80.')
-    parser.add_argument('--steps', '-s', type=int, dest='num_steps', default=70,
+    parser.add_argument('--batch', '-b', type=int, dest='batch_size', default=1,
+                        help='the batch size. Default is 1.')
+    parser.add_argument('--steps', '-s', type=int, dest='bptt', default=70,
                         help='the number of timesteps. Default is 70.')
     parser.add_argument('--log-level', '-L', type=str, default=None,
                         choices=['debug', 'info', 'warning', 'error', 'critical'],
@@ -57,11 +57,9 @@ def evaluate(model, data_source, criterion, args, batch_size=10):
     context = [[] for _ in range(batch_size)]
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
-        print(data.size(), targets.size())
         output, hidden = model(data, hidden)
-        print(output.size(), hidden.size())
-        break
-        total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
+        loss = criterion(model.decoder.weight, model.decoder.bias, output, targets).data
+        total_loss += len(data) * loss
         hidden = repackage_hidden(hidden)
     return total_loss.item() / len(data_source)
 
@@ -83,9 +81,11 @@ def main():
         corpus = data.Corpus(args.data)
         torch.save(corpus, fn)
 
+    eval_batch_size = 1
+
     test_data = batchify(corpus.test, eval_batch_size, args)
     model, criterion = model_load(args.model)
-    evaluate(model, val_data, criterion, eval_batch_size)
+    evaluate(model, test_data, criterion, args, eval_batch_size)
 
 
 if __name__ == '__main__':

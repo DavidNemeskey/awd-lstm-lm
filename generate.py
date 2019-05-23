@@ -6,6 +6,7 @@
 ###############################################################################
 
 import argparse
+import sys
 
 import torch
 from torch.autograd import Variable
@@ -29,6 +30,8 @@ parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
 parser.add_argument('--cuda', action='store_true',
                     help='use CUDA')
+parser.add_argument('--print', action='store_true',
+                    help='print tokens and their probability to stdout.')
 parser.add_argument('--temperature', type=float, default=1.0,
                     help='temperature - higher will increase diversity')
 parser.add_argument('--log-interval', type=int, default=100,
@@ -47,15 +50,18 @@ if args.temperature < 1e-3:
     parser.error("--temperature has to be greater or equal 1e-3")
 
 with open(args.checkpoint, 'rb') as f:
-    model = torch.load(f)
+    model, *_ = torch.load(f)
 model.eval()
+sm = torch.nn.Softmax()
 if args.model == 'QRNN':
     model.reset()
 
 if args.cuda:
     model.cuda()
+    sm.cuda()
 else:
     model.cpu()
+    sm.cpu()
 
 corpus = data.Corpus(args.data)
 ntokens = len(corpus.dictionary)
@@ -67,12 +73,19 @@ if args.cuda:
 with open(args.outf, 'w') as outf:
     for i in range(args.words):
         output, hidden = model(input, hidden)
-        word_weights = output.squeeze().data.div(args.temperature).exp().cpu()
+        logits = model.decoder(output.squeeze())
+        word_weights = sm(logits.data.div(args.temperature)).cpu()
         word_idx = torch.multinomial(word_weights, 1)[0]
         input.data.fill_(word_idx)
         word = corpus.dictionary.idx2word[word_idx]
+        if args.print:
+            p = word_weights[word_idx] / sum(word_weights)
+            print('{} ({:.4}) '.format(word, p), end='')
 
         outf.write(word + ('\n' if i % 20 == 19 else ' '))
 
         if i % args.log_interval == 0:
             print('| Generated {}/{} words'.format(i, args.words))
+
+if args.print:
+    print()

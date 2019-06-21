@@ -280,7 +280,7 @@ try:
     for epoch in range(1, args.epochs+1):
         epoch_start_time = time.time()
         ps.new_epoch()  # AdamW
-        train()
+        train(ps)
 
         val_loss = evaluate(val_data, eval_batch_size)
         logging.info('-' * 89)

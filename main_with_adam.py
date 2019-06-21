@@ -257,7 +257,8 @@ stored_loss = 100000000
 
 # At any point you can hit Ctrl + C to break out of training early.
 try:
-    optimizer = AdamW(params, lr=args.lr, weight_decay=args.wdecay)
+    optimizer = AdamW(params, lr=args.lr, weight_decay=args.wdecay,
+                      betas=(0.9, 0.99))
     min_mom, max_mom = 0.7, 0.8
     ps = ParamScheduler(
         optimizer,

@@ -1,19 +1,23 @@
 import argparse
+import hashlib
 import logging
-import time
 import math
+import os
+import time
+
 import numpy as np
 import torch
-import torch.nn as nn
-from torch.autograd import Variable
 
 import data
 import model
 
 from adamw import AdamW
+from lr_schedule import ParamScheduler, ConstantPhase, LinearPhase, CosinePhase
+from splitcross import SplitCrossEntropyLoss
 from utils import batchify, get_batch, repackage_hidden
 
-parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
+parser = argparse.ArgumentParser(
+    description='PyTorch PennTreeBank RNN/LSTM Language Model')
 parser.add_argument('--data', type=str, default='data/penn/',
                     help='location of the data corpus')
 parser.add_argument('--model', type=str, default='LSTM',
@@ -94,13 +98,13 @@ def model_save(fn):
     with open(fn, 'wb') as f:
         torch.save([model, criterion, optimizer], f)
 
+
 def model_load(fn):
     global model, criterion, optimizer
     with open(fn, 'rb') as f:
         model, criterion, optimizer = torch.load(f)
 
-import os
-import hashlib
+
 fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
 if os.path.exists(fn):
     logging.info('Loading cached dataset...')
@@ -120,7 +124,6 @@ test_data = batchify(corpus.test, test_batch_size, args)
 # Build the model
 ###############################################################################
 
-from splitcross import SplitCrossEntropyLoss
 criterion = None
 
 ntokens = len(corpus.dictionary)
@@ -168,7 +171,7 @@ def evaluate(data_source, batch_size=10):
     model.eval()
     if args.model == 'QRNN': model.reset()
     total_loss = 0
-    ntokens = len(corpus.dictionary)
+    _ = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
@@ -178,12 +181,12 @@ def evaluate(data_source, batch_size=10):
     return total_loss[0] / len(data_source)
 
 
-def train():
+def train(ps):
     # Turn on training mode which enables dropout.
     if args.model == 'QRNN': model.reset()
     total_loss = 0
     start_time = time.time()
-    ntokens = len(corpus.dictionary)
+    _ = len(corpus.dictionary)
     hidden = model.init_hidden(args.batch_size)
     batch, i = 0, 0
     while i < train_data.size(0) - 1 - 1:
@@ -192,6 +195,12 @@ def train():
         seq_len = max(5, int(np.random.normal(bptt, 5)))
         # There's a very small chance that it could select a very long sequence length resulting in OOM
         # seq_len = min(seq_len, args.bptt + 10)
+
+        epoch_decimal = batch / (len(train_data) // args.bptt)
+        ps.update(epoch_decimal)
+        logging.debug('epoch_decimal: {}'.format(epoch_decimal))
+        logging.debug('LR: {}, betas: {}'.format(optimizer.param_groups[0]['lr'],
+                                                 optimizer.param_groups[0]['betas']))
 
         lr2 = optimizer.param_groups[0]['lr']
         optimizer.param_groups[0]['lr'] = lr2 * seq_len / args.bptt
@@ -240,6 +249,7 @@ def train():
         batch += 1
         i += seq_len
 
+
 # Loop over epochs.
 lr = args.lr
 best_val_loss = []
@@ -248,8 +258,27 @@ stored_loss = 100000000
 # At any point you can hit Ctrl + C to break out of training early.
 try:
     optimizer = AdamW(params, lr=args.lr, weight_decay=args.wdecay)
+    min_mom, max_mom = 0.7, 0.8
+    ps = ParamScheduler(
+        optimizer,
+        {
+            'lr': [
+                LinearPhase(7.5, args.lr / 10, args.lr),
+                ConstantPhase(37.5, args.lr),
+                LinearPhase(37.5, args.lr, args.lr / 10),
+                CosinePhase(7.5, args.lr / 10, args.lr / 1000)
+            ],
+            ('betas', 0): [
+                LinearPhase(7.5, max_mom, min_mom),
+                ConstantPhase(37.5, min_mom),
+                LinearPhase(37.5, min_mom, max_mom),
+                ConstantPhase(7.5, max_mom)
+            ]
+        }
+    )
     for epoch in range(1, args.epochs+1):
         epoch_start_time = time.time()
+        ps.new_epoch()  # AdamW
         train()
 
         val_loss = evaluate(val_data, eval_batch_size)

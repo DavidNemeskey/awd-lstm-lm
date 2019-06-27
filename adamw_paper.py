@@ -97,15 +97,14 @@ class AdamW(Optimizer):
                     # Maintains the maximum of all 2nd moment running avg. till now
                     torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
                     # Use the max. for normalizing running avg. of gradient
-                    v_tcap = max_exp_avg_sq.sqrt()
+                    v_tcap = max_exp_avg_sq.div(bias_correction2)
                 else:
-                    v_tcap = exp_avg_sq.sqrt()
-                v_tcap.div_(bias_correction2)
+                    v_tcap = exp_avg_sq.div(bias_correction2)
                 m_tcap = exp_avg.div(bias_correction1)
 
-                step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
-
-                p.data.addcdiv_(-group['lr'], m_tcap, v_tcap.add(group['eps']))
-                p.data.add_(-group['weight_decay'], p.data)
+                new_data = p.data.addcdiv(-group['lr'], m_tcap,
+                                          v_tcap.sqrt().add(group['eps']))
+                # The 'W' part
+                p.data = new_data.add(-group['weight_decay'], p.data)
 
         return loss

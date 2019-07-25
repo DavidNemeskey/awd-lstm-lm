@@ -10,13 +10,13 @@ import numpy as np
 import torch
 
 import data
-import model
+import model as mod
+from splitcross import SplitCrossEntropyLoss
+from utils import batchify, get_batch, repackage_hidden
 
 from adamw_paper import AdamW
 from adam_paper import Adam
 from lr_schedule import ParamScheduler, ConstantPhase, LinearPhase, CosinePhase
-from splitcross import SplitCrossEntropyLoss
-from utils import batchify, get_batch, repackage_hidden
 
 
 def parse_arguments():
@@ -125,6 +125,7 @@ def ensure_corpus(data_file):
         logging.info('Producing dataset...')
         corpus = data.Corpus(data_file)
         torch.save(corpus, fn)
+    return corpus
 
 ###############################################################################
 # Training functions
@@ -269,9 +270,9 @@ def main():
     ###########################################################################
 
     ntokens = len(corpus.dictionary)
-    model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid,
-                           args.nlayers, args.dropout, args.dropouth,
-                           args.dropouti, args.dropoute, args.wdrop, args.tied)
+    model = mod.RNNModel(args.model, ntokens, args.emsize, args.nhid,
+                         args.nlayers, args.dropout, args.dropouth,
+                         args.dropouti, args.dropoute, args.wdrop, args.tied)
     ###
     if args.resume:
         logging.info('Resuming model ...')

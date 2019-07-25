@@ -123,6 +123,7 @@ def ensure_corpus(data_file):
         logging.info('Producing dataset...')
         corpus = data.Corpus(data_file)
         torch.save(corpus, fn)
+    return corpus
 
 ###############################################################################
 # Training functions

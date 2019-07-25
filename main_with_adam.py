@@ -1,17 +1,15 @@
 import argparse
-import hashlib
 import logging
 import math
-import os
 import random
 import time
 
 import numpy as np
 import torch
 
-import data
+from common import model_save, model_load
+from common import create_criterion, load_embedding, ensure_corpus
 import model as mod
-from splitcross import SplitCrossEntropyLoss
 from utils import batchify, get_batch, repackage_hidden
 
 from adamw_paper import AdamW
@@ -92,45 +90,6 @@ def parse_arguments():
     return args
 
 ###############################################################################
-# Load data
-###############################################################################
-
-def model_save(fn, model, criterion, optimizer):
-    """Saves the model, criterion and optimizer into *fn*."""
-    with open(fn, 'wb') as f:
-        torch.save([model, criterion, optimizer], f)
-
-
-def model_load(fn):
-    """Loads the model, criterion and optimizer from *fn*."""
-    with open(fn, 'rb') as f:
-        model, criterion, optimizer = torch.load(f)
-    return model, criterion, optimizer
-
-
-def load_embedding(fn, model, requires_grad=False):
-    """Loads an embedding from *fn* and replaces the model embedding with it."""
-    with open(fn, 'rb') as f:
-        embedding_model, _, _ = torch.load(f)
-        model.encoder.weight = embedding_model.encoder.weight
-        model.decoder.weight = embedding_model.decoder.weight
-        model.encoder.weight.requires_grad = requires_grad
-        model.decoder.weight.requires_grad = requires_grad
-
-
-def ensure_corpus(data_file):
-    """Ensures that the cached corpus file exists."""
-    fn = 'corpus.{}.data'.format(hashlib.md5(data_file.encode()).hexdigest())
-    if os.path.exists(fn):
-        logging.info('Loading cached dataset...')
-        corpus = torch.load(fn)
-    else:
-        logging.info('Producing dataset...')
-        corpus = data.Corpus(data_file)
-        torch.save(corpus, fn)
-    return corpus
-
-###############################################################################
 # Training functions
 ###############################################################################
 
@@ -152,7 +111,8 @@ def evaluate(model, data_source, args, criterion, batch_size=10):
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
-        total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
+        total_loss += len(data) * criterion(output, targets).data
+        # ASM total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
     return total_loss[0] / len(data_source)
 
@@ -200,7 +160,8 @@ def train(model, data_source, args, criterion, optimizer, params, epoch, ps):
         optimizer.zero_grad()
 
         output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden, return_h=True)
-        raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
+        raw_loss = criterion(output, targets)
+        # ASM raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
 
         loss = raw_loss
         # Activiation Regularization
@@ -293,17 +254,7 @@ def main():
                 elif rnn.zoneout > 0: rnn.zoneout = args.wdrop
     ###
     if not criterion:
-        splits = []
-        if ntokens > 500000:
-            # One Billion
-            # This produces fairly even matrix mults for the buckets:
-            # 0: 11723136, 1: 10854630, 2: 11270961, 3: 11219422
-            splits = [4200, 35000, 180000]
-        elif ntokens > 75000:
-            # WikiText-103
-            splits = [2800, 20000, 76000]
-        logging.info('Using splits {}'.format(splits))
-        criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
+        criterion = create_criterion()
 
     ### Load the embedding, if required
     if args.from_embedding:

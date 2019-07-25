@@ -92,7 +92,7 @@ def parse_arguments():
     return args
 
 
-def create_criterion(args):
+def create_criterion(emsize=None):
     """Returns the criterion object. Refactored to a separate function."""
     # ASM
     # splits = []
@@ -105,7 +105,7 @@ def create_criterion(args):
     #     # WikiText-103
     #     splits = [2800, 20000, 76000]
     # logging.info('Using splits {}'.format(splits))
-    # criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
+    # criterion = SplitCrossEntropyLoss(emsize, splits=splits, verbose=False)
     criterion = torch.nn.CrossEntropyLoss()
     return criterion
 
@@ -314,7 +314,7 @@ def main():
                 elif rnn.zoneout > 0: rnn.zoneout = args.wdrop
     ###
     if not criterion:
-        criterion = create_criterion(args)
+        criterion = create_criterion()
 
     ### Load the embedding, if required
     if args.from_embedding:

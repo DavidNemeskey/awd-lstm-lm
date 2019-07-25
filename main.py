@@ -10,7 +10,7 @@ import numpy as np
 import torch
 
 import data
-import model
+import model as mod
 from splitcross import SplitCrossEntropyLoss
 from utils import batchify, get_batch, repackage_hidden
 
@@ -128,7 +128,7 @@ def ensure_corpus(data_file):
 # Training functions
 ###############################################################################
 
-def evaluate(data_source, args, criterion, batch_size=10):
+def evaluate(model, data_source, args, criterion, batch_size=10):
     """
     Evaluates on the specified data (typically the eval / test sets).
 
@@ -149,7 +149,7 @@ def evaluate(data_source, args, criterion, batch_size=10):
     return total_loss[0] / len(data_source)
 
 
-def train(data_source, args, criterion, optimizer, params, epoch):
+def train(model, data_source, args, criterion, optimizer, params, epoch):
     """
     Runs a training epoch.
 
@@ -255,9 +255,9 @@ def main():
     ###########################################################################
 
     ntokens = len(corpus.dictionary)
-    model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid,
-                           args.nlayers, args.dropout, args.dropouth,
-                           args.dropouti, args.dropoute, args.wdrop, args.tied)
+    model = mod.RNNModel(args.model, ntokens, args.emsize, args.nhid,
+                         args.nlayers, args.dropout, args.dropouth,
+                         args.dropouti, args.dropoute, args.wdrop, args.tied)
     ###
     if args.resume:
         logging.info('Resuming model ...')
@@ -322,7 +322,7 @@ def main():
             optimizer = torch.optim.Adam(params, lr=args.lr, weight_decay=args.wdecay)
         for epoch in range(1, args.epochs + 1):
             epoch_start_time = time.time()
-            train(train_data, args, criterion, optimizer, params, epoch)
+            train(model, train_data, args, criterion, optimizer, params, epoch)
             # if args.from_embedding:
             #     logging.debug('asserting...')
             #     assert (orig_emb.cpu() - model.encoder.weight.cpu()).norm(2) == 0
@@ -333,7 +333,7 @@ def main():
                     tmp[prm] = prm.data.clone()
                     prm.data = optimizer.state[prm]['ax'].clone()
 
-                val_loss2 = evaluate(val_data, args, criterion)
+                val_loss2 = evaluate(model, val_data, args, criterion)
                 logging.info('-' * 89)
                 logging.info(
                     '| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
@@ -352,7 +352,7 @@ def main():
                     prm.data = tmp[prm].clone()
 
             else:
-                val_loss = evaluate(val_data, args, criterion, eval_batch_size)
+                val_loss = evaluate(model, val_data, args, criterion, eval_batch_size)
                 logging.info('-' * 89)
                 logging.info(
                     '| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
@@ -391,7 +391,7 @@ def main():
     model, criterion, optimizer = model_load(args.save)
 
     # Run on test data.
-    test_loss = evaluate(test_data, args, criterion, test_batch_size)
+    test_loss = evaluate(model, test_data, args, criterion, test_batch_size)
     logging.info('=' * 89)
     logging.info('| End of training | test loss {:5.2f} | '
                  'test ppl {:8.2f} | test bpc {:8.3f}'.format(

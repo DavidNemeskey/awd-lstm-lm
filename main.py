@@ -132,9 +132,11 @@ def evaluate(model, data_source, args, criterion, batch_size=10):
     """
     Evaluates on the specified data (typically the eval / test sets).
 
+    :param model: the RNN model.
     :param data_source: data_source the batch. Output of :func:`utils.batchify`.
     :param args: args the command-line arguments. Ugly, but oh well.
     :param criterion: the criterion to evaluate the data with.
+    :param batch_size: the batch size.
     """
     # Turn on evaluation mode which disables dropout.
     model.eval()
@@ -153,6 +155,7 @@ def train(model, data_source, args, criterion, optimizer, params, epoch):
     """
     Runs a training epoch.
 
+    :param model: the RNN model to train.
     :param data_source: data_source the batch. Output of :func:`utils.batchify`.
     :param args: args the command-line arguments. Ugly, but oh well.
     :param criterion: the criterion to train against.

@@ -304,8 +304,8 @@ def main():
         load_embedding(args.from_embedding, model)
 
     orig_emb = model.encoder.weight.detach()
-    assert (orig_emb - model.encoder.weight).norm(2) == 0
-    assert (orig_emb - model.decoder.weight).norm(2) == 0
+    assert ((orig_emb - model.encoder.weight).norm(2) == 0).all()
+    assert ((orig_emb - model.decoder.weight).norm(2) == 0).all()
     del orig_emb  # TODO: test
 
     ###

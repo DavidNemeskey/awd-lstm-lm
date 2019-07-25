@@ -359,9 +359,9 @@ def main():
         for epoch in range(1, args.epochs+1):
             epoch_start_time = time.time()
             ps.new_epoch()  # AdamW
-            train(train_data, args, criterion, optimizer, params, epoch, ps)
+            train(model, train_data, args, criterion, optimizer, params, epoch, ps)
 
-            val_loss = evaluate(val_data, eval_batch_size)
+            val_loss = evaluate(model, val_data, args, criterion, eval_batch_size)
             logging.info('-' * 89)
             logging.info(
                 '| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
@@ -392,7 +392,7 @@ def main():
     model, criterion, optimizer = model_load(args.save)
 
     # Run on test data.
-    test_loss = evaluate(test_data, test_batch_size)
+    test_loss = evaluate(model, test_data, args, criterion, test_batch_size)
     logging.info('=' * 89)
     logging.info('| End of training | test loss {:5.2f} | test ppl {:8.2f} | '
                  'test bpc {:8.3f}'.format(test_loss, math.exp(test_loss),

@@ -11,7 +11,7 @@ import torch
 
 import data
 import model as mod
-from splitcross import SplitCrossEntropyLoss
+# ASM from splitcross import SplitCrossEntropyLoss
 from utils import batchify, get_batch, repackage_hidden
 
 
@@ -86,6 +86,24 @@ def parse_arguments():
     args.tied = True
     return args
 
+
+def create_criterion(args):
+    """Returns the criterion object. Refactored to a separate function."""
+    # ASM
+    # splits = []
+    # if ntokens > 500000:
+    #     # One Billion
+    #     # This produces fairly even matrix mults for the buckets:
+    #     # 0: 11723136, 1: 10854630, 2: 11270961, 3: 11219422
+    #     splits = [4200, 35000, 180000]
+    # elif ntokens > 75000:
+    #     # WikiText-103
+    #     splits = [2800, 20000, 76000]
+    # logging.info('Using splits {}'.format(splits))
+    # criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
+    criterion = torch.nn.CrossEntropyLoss()
+    return criterion
+
 ###############################################################################
 # Load data
 ###############################################################################
@@ -147,7 +165,8 @@ def evaluate(model, data_source, args, criterion, batch_size=10):
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
-        total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
+        total_loss += len(data) * criterion(output, targets).data
+        # ASM total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
     return total_loss[0] / len(data_source)
 
@@ -188,7 +207,8 @@ def train(model, data_source, args, criterion, optimizer, params, epoch):
         optimizer.zero_grad()
 
         output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden, return_h=True)
-        raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
+        raw_loss = criterion(output, targets)
+        # ASM raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
 
         loss = raw_loss
         # Activiation Regularization
@@ -276,17 +296,7 @@ def main():
                 elif rnn.zoneout > 0: rnn.zoneout = args.wdrop
     ###
     if not criterion:
-        splits = []
-        if ntokens > 500000:
-            # One Billion
-            # This produces fairly even matrix mults for the buckets:
-            # 0: 11723136, 1: 10854630, 2: 11270961, 3: 11219422
-            splits = [4200, 35000, 180000]
-        elif ntokens > 75000:
-            # WikiText-103
-            splits = [2800, 20000, 76000]
-        logging.info('Using splits {}'.format(splits))
-        criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
+        criterion = create_criterion(args)
 
     ### Load the embedding, if required
     if args.from_embedding:

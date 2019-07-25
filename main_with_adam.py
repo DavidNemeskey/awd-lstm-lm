@@ -12,8 +12,8 @@ import torch
 import data
 import model
 
-from adamw import AdamW
-from torch.optim import Adam
+from adamw_paper import AdamW
+from adam_paper import Adam
 from lr_schedule import ParamScheduler, ConstantPhase, LinearPhase, CosinePhase
 from splitcross import SplitCrossEntropyLoss
 from utils import batchify, get_batch, repackage_hidden

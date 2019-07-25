@@ -81,6 +81,9 @@ def parse_arguments():
     # parser.add_argument('--when', nargs="+", type=int, default=[-1],
     #                     help='When (which epochs) to divide the learning rate '
     #                          'by 10 - accepts multiple')
+    parser.add_argument('--from-embedding',
+                        help='initialize the embedding (and softmax) weights '
+                             'from those of an already existing model')
     parser.add_argument('--log-level', '-L', type=str, default='info',
                         choices=['debug', 'info', 'warning', 'error', 'critical'],
                         help='the logging level.')

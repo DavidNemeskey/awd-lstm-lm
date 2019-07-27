@@ -39,7 +39,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def evaluate(model, data_source, corpus, criterion, args, batch_size=10):
+def evaluate(model, data_source, corpus, criterion, args, batch_size=1):
     """
     Evaluates on the specified data (typically the eval / test sets) and
     collects the statistics.
@@ -50,6 +50,7 @@ def evaluate(model, data_source, corpus, criterion, args, batch_size=10):
     :param criterion: the criterion to evaluate the data with.
     :param batch_size: the batch size.
     """
+    assert batch_size == 1, 'batch sizes other than 1 are not supported yet'
     # Turn on evaluation mode which disables dropout.
     model.eval()
     if hasattr(model, 'reset'): model.reset()  # QRNN
@@ -61,37 +62,44 @@ def evaluate(model, data_source, corpus, criterion, args, batch_size=10):
           'target_index', 'target_p', 'predicted_p', 'most_probable',
           sep='\t')
     for i in range(0, data_source.size(0) - 1, args.bptt):
+        # targets.size() = bptt
         data, targets = get_batch(data_source, i, args, evaluation=True)
+        logging.info('data: {}'.format(data.size()))
+        # output.size() = bptt x |V| -- this is the default
         output, hidden = model(data, hidden)
         # TODO: mondatkezdo
-        # Let's hope it's dim=2
-        sorted_logits, most_probable = torch.sort(output, dim=2, descending=True)
-        eq_target = (most_probable == targets.unsqueeze(2))
+        sorted_logits, most_probable = torch.sort(output, dim=1, descending=True)
+        eq_target = (most_probable == targets.unsqueeze(1))
+        # nnz.size() = bptt x 2
         nnz = eq_target.nonzero()
-        indices = targets.index_put((nnz[:, 0], nnz[:, 1]), nnz[:, 2])
-        losses = criterion(output, targets).data.view(batch_size, args.bptt)
+        logging.info('nnz: {}'.format(nnz.size()))
+        # indices = targets.index_put((nnz[:, 0], nnz[:, 1]), nnz[:, 2])
+        losses = criterion(output, targets)
+        logging.info('losses: {}'.format(losses.size()))
+        # losses = criterion(output, targets).data.view(batch_size, args.bptt)
         # loss = criterion(output, targets).data
-        probabilities = F.softmax(sorted_logits, dim=2)
-        coordx, coordy = torch.meshgrid([torch.arange(batch_size), torch.arange(args.bptt)])
-        target_probs = probabilities[coordx, coordy, indices]
-        predicted_probs = probabilities[:, :, 0]
-        entropy = (-probabilities * F.log_softmax(sorted_logits, dim=2)).sum(2)
+        probabilities = F.softmax(sorted_logits, dim=1)
+        # probabilities.size() = bptt x |V|, each row sums to 1
+        entropy = (-probabilities * F.log_softmax(sorted_logits, dim=1)).sum(dim=1)
+        # coordx, coordy = torch.meshgrid([torch.arange(batch_size), torch.arange(args.bptt)])
+        # target_probs = probabilities[coordx, coordy, indices]
+        # predicted_probs = probabilities[:, :, 0]
         total_loss += torch.sum(losses)[0]
-        hidden = repackage_hidden(hidden)
+        # hidden = repackage_hidden(hidden)
         for i in range(data.size(0)):
-            context[i] = (context[i] + [corpus.dictionary.idx2word[data[i, 0]]])[-10:]
+            context[0] = (context[0] + [corpus.dictionary.idx2word[data[i, 0].data[0]]])[-10:]
             # word, context, loss, perplexity, entropy of the distribution,
             # index of the target word, probability of target word,
             # probability of predicted word, most probable words
-            print(corpus.dictionary.idx2word[targets[i, 0]],
-                  ' '.join(context[i]),
-                  losses[i, 0].item(),
-                  exp(losses[i, 0]),
-                  entropy[i, 0].item(),
-                  indices[i, 0].item(),
-                  target_probs[i, 0].item(),
-                  predicted_probs[i, 0].item(),
-                  ' '.join(corpus.dictionary.idx2word[w] for w in most_probable[i, 0, :5]),
+            print(corpus.dictionary.idx2word[targets[i].data[0]],  # word
+                  ' '.join(context[0]),  # context
+                  losses[i].data[0],  # [0]?  # loss
+                  exp(losses[i]),  # perplexity
+                  entropy[i].data[0],
+                  # indices[i, 0].item(),
+                  # target_probs[i, 0].item(),
+                  # predicted_probs[i, 0].item(),
+                  # ' '.join(corpus.dictionary.idx2word[w] for w in most_probable[i, 0, :5]),
                   sep='\t')
     return total_loss / batch_size / len(data_source)
 
@@ -109,7 +117,8 @@ def main():
     eval_batch_size = 1
 
     test_data = batchify(corpus.test, eval_batch_size, args)
-    model, criterion, _ = model_load(args.model)
+    model, _, _ = model_load(args.model)
+    criterion = torch.nn.CrossEntropyLoss(reduce=False)
     evaluate(model, test_data, corpus, criterion, args, eval_batch_size)
 
 

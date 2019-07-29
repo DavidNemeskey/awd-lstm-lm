@@ -39,13 +39,14 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def evaluate(model, data_source, corpus, criterion, args, batch_size=1):
+def evaluate(model, data_source, corpus, args, criterion, batch_size=1):
     """
     Evaluates on the specified data (typically the eval / test sets) and
     collects the statistics.
 
     :param model: the RNN model.
     :param data_source: data_source the batch. Output of :func:`utils.batchify`.
+    :param corpus: the corpus, used to convert token ids to tokens.
     :param args: args the command-line arguments. Ugly, but oh well.
     :param criterion: the criterion to evaluate the data with.
     :param batch_size: the batch size.
@@ -143,7 +144,7 @@ def main():
     model, _, _ = model_load(args.model)
     criterion = torch.nn.CrossEntropyLoss(reduce=False)
     logging.info('Running evaluation...')
-    evaluate(model, test_data, corpus, criterion, args, eval_batch_size)
+    evaluate(model, test_data, corpus, args, criterion, eval_batch_size)
     logging.info('Done.')
 
 

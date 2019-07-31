@@ -76,21 +76,25 @@ def evaluate(model, data_source, corpus, args, criterion, batch_size=1):
           sep='\t')
     # Note: batches are vertical
     for i in range(0, data_source.size(0) - 1, args.bptt):
-        # data.size() = [bptt, bs]
-        # targets.size() = [bptt * bs]
+        # data.size() = [bptt, bs], variable
+        # targets.size() = [bptt * bs], variable
         data, targets = get_batch(data_source, i, args, evaluation=True)
         bptt = data.size()[0]
-        # output.size() = [bptt * bs, |V|]
+        # output.size() = [bptt * bs, |V|], variable
         output, hidden = model(data, hidden)
         # losses.size() = [bptt, bs]
-        losses = criterion(output, targets).view(bptt, batch_size)
+        losses = criterion(output, targets).data.view(bptt, batch_size)
+        # We don't need these to be Variables anymore + resizing the latter
+        # Getting rid of Variables also speeds up the computation
+        data = data.data
+        targets = targets.data.view(bptt, batch_size)
         # TODO: mondatkezdo
         # sorted_logits.size() = most_probable.size() = [bptt, bs, |V|]
         sorted_logits, most_probable = torch.sort(
             output.view(bptt, batch_size, -1), dim=2, descending=True)
+        most_probable = most_probable.data
         # eq_target.size() = [bptt, bs, |V|]
-        rect_targets = targets.view(bptt, batch_size)
-        eq_target = (most_probable == rect_targets.unsqueeze(2))
+        eq_target = (most_probable == targets.unsqueeze(2))
         # nnz.size() = [bptt * bs, 3]
         nnz = eq_target.nonzero()
         # indices.size() = [bptt, bs], and contains the non-zero indices in eq_target
@@ -98,9 +102,9 @@ def evaluate(model, data_source, corpus, args, criterion, batch_size=1):
         indices[(nnz[:, 0], nnz[:, 1])] = nnz[:, 2]
 
         # probabilities.size() = [bptt, batch_size, |V|], each row sums to 1
-        probabilities = F.softmax(sorted_logits, dim=2)
+        probabilities = F.softmax(sorted_logits, dim=2).data
         # entropy.size() = [bptt, bs]
-        entropy = (-probabilities * F.log_softmax(sorted_logits, dim=2)).sum(dim=2)
+        entropy = (-probabilities * F.log_softmax(sorted_logits, dim=2).data).sum(dim=2)
         coordx, coordy = coordgrid_2d_for(data)
         # target_probs.size() = [bptt, bs]
         target_probs = probabilities[coordx, coordy, indices]
@@ -111,19 +115,19 @@ def evaluate(model, data_source, corpus, args, criterion, batch_size=1):
 
         # TODO: batch_size
         for step, batch in product(range(bptt), range(batch_size)):
-            context[batch] = (context[batch] + [corpus.dictionary.idx2word[data[step, batch].data[0]]])[-10:]
+            context[batch] = (context[batch] + [corpus.dictionary.idx2word[data[step, batch]]])[-10:]
             # word, context, loss, perplexity, entropy of the distribution,
             # index of the target word, probability of target word,
             # probability of predicted word, most probable words
-            print(corpus.dictionary.idx2word[rect_targets[step, batch].data[0]],  # word
+            print(corpus.dictionary.idx2word[targets[step, batch]],  # word
                   ' '.join(context[batch]),  # context
-                  losses[step, batch].data[0],  # loss
+                  losses[step, batch],  # loss
                   exp(losses[step, batch]),  # perplexity
-                  entropy[step, batch].data[0],  # entropy of the distribution
-                  indices[step, batch].data[0],  # index of the target word
-                  target_probs[step, batch].data[0],  # probability of target word
-                  predicted_probs[step, batch].data[0],  # probability of predicted word
-                  ' '.join(corpus.dictionary.idx2word[w.data[0]]
+                  entropy[step, batch],  # entropy of the distribution
+                  indices[step, batch],  # index of the target word
+                  target_probs[step, batch],  # probability of target word
+                  predicted_probs[step, batch],  # probability of predicted word
+                  ' '.join(corpus.dictionary.idx2word[w]
                            for w in most_probable[step, batch, :5]),
                   sep='\t')
     return total_loss / batch_size / len(data_source)

@@ -40,7 +40,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def coordgrid_2d_for(tensor): 
+def coordgrid_2d_for(tensor):
     """
     Generates a meshgrid *height* tall and *width* wide. Needed because
     torch 0.3 doesn't have the meshgrid function.
@@ -48,7 +48,7 @@ def coordgrid_2d_for(tensor):
     coords = [torch.arange(tensor.size()[i]).long() for i in range(2)]
     if tensor.is_cuda:
         coords = [c.cuda() for c in coords]
-    return (coords[0].view(-1, 1).expand(-1, tensor.size()[1]), 
+    return (coords[0].view(-1, 1).expand(-1, tensor.size()[1]),
             coords[1].view(1, -1).expand(tensor.size()[0], -1))
 
 
@@ -101,7 +101,6 @@ def evaluate2(model, data_source, corpus, args, criterion, batch_size=1):
         # logging.info(f'eq_target: {eq_target[1, idx-5:idx+5]} out of {sum(list(eq_target[1].data))}')
 
         # indices.size() = [bptt] ; nonzero()'s first column is the index (0 .. bptt - 1)
-        ### indices = eq_target.nonzero()[:, 1]
         # for i in range(args.bptt):
         #     logging.info(f'i: {i}')
         #     word_id = targets.data[i]
@@ -210,7 +209,7 @@ def evaluate(model, data_source, corpus, args, criterion, batch_size=1):
 
         # predicted_probs.size() = bptt
         predicted_probs = probabilities[torch.arange(bptt).cuda().long(),
-                                       torch.zeros(bptt).cuda().long()]
+                                        torch.zeros(bptt).cuda().long()]
 
         for i in range(data.size(0)):
             context[0] = (context[0] + [corpus.dictionary.idx2word[data[i, 0].data[0]]])[-10:]

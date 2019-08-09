@@ -42,7 +42,19 @@ def parse_arguments():
     return args
 
 
-def parse_input(text):
+def parse_input(data: pd.DataFrame, model: str):
+    text = re.sub(r'\s*<eos>\s*', '\n', ' '.join(data['target_word']))
+    nlp = spacy.load(model)
+    doc = nlp(text)
+    headers = ['POS', 'dep_link', 'dep_head', 'shape', 'alpha', 'stop', 'depth']
+    new_data = []
+    for token in doc:
+        new_data.append([token.text, token.tag_, token.dep_,
+                         token.head.i - token.i, token.shape, token.is_alpha,
+                         token.is_stop, len(token.ancestors)])
+    zip(new_data)
+
+    len(token.ancestors)
 
 
 def main():
@@ -54,7 +66,7 @@ def main():
     )
     logging.info(f'Arguments: {args}')
 
-    data = pd.from_csv(args.input_file, sep='\t', header=0)
+    data = pd.read_csv(args.input_file, delimiter=r'\t')
 
 
 if __name__ == '__main__':

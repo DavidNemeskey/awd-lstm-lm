@@ -15,6 +15,8 @@ TODO: what features?
 
 import argparse
 import logging
+import re
+
 import pandas as pd
 import spacy
 
@@ -42,19 +44,32 @@ def parse_arguments():
     return args
 
 
+class WhitespaceTokenizer:
+    """
+    Whitespace tokenizer for spaCy. Since we start with a pre-tokenized
+    corpus, we need to keep stay in synch with it.
+    """
+    def __init__(self, vocab):
+        self.vocab = vocab
+
+    def __call__(self, text):
+        return spacy.tokens.doc.Doc(self.vocab, text.split())
+
+
 def parse_input(data: pd.DataFrame, model: str):
     text = re.sub(r'\s*<eos>\s*', '\n', ' '.join(data['target_word']))
     nlp = spacy.load(model)
+    nlp.tokenizer = WhitespaceTokenizer(nlp.vocab)
     doc = nlp(text)
-    headers = ['POS', 'dep_link', 'dep_head', 'shape', 'alpha', 'stop', 'depth']
+    columns = ['POS', 'dep_link', 'dep_head', 'shape', 'alpha', 'stop', 'depth']
     new_data = []
     for token in doc:
         new_data.append([token.text, token.tag_, token.dep_,
                          token.head.i - token.i, token.shape, token.is_alpha,
                          token.is_stop, len(token.ancestors)])
-    zip(new_data)
-
-    len(token.ancestors)
+    for col, series in zip(columns, zip(*new_data)):
+        data[col] = series
+    return data
 
 
 def main():
@@ -67,6 +82,8 @@ def main():
     logging.info(f'Arguments: {args}')
 
     data = pd.read_csv(args.input_file, delimiter=r'\t')
+    new_data = parse_input(data, args.model)
+    new_data.to_csv(args.output_file, sep='\t', index=False, mode='wt')
 
 
 if __name__ == '__main__':
